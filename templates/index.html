@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <title>Klasifikasi Nyamuk</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <style>
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #f7f7f7;
+      color: #111;
+    }
+
+    header {
+      padding: 16px 24px;
+      border-bottom: 1px solid #ddd;
+      background: #fff;
+      font-weight: 600;
+    }
+
+    main {
+      display: flex;
+      height: calc(100vh - 60px);
+    }
+
+    .preview-area {
+      flex: 2;
+      position: relative;
+      background: #fafafa;
+      overflow: hidden; /* Memotong konten yang keluar area saat zoom */
+      border-right: 1px solid #ddd;
+    }
+
+    #zoomContainer {
+      width: 100%;
+      height: 100%;
+      cursor: grab;
+      display: block; /* Mengubah ke block untuk kontrol manual koordinat */
+    }
+
+    #zoomContent {
+      transform-origin: 0 0;
+      will-change: transform;
+      position: absolute;
+    }
+
+    #preview {
+      display: block;
+      user-select: none;
+      -webkit-user-drag: none;
+    }
+
+    canvas {
+      position: absolute;
+      left: 0;
+      top: 0;
+      pointer-events: none;
+    }
+
+    .placeholder {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: #aaa;
+      font-size: 14px;
+      pointer-events: none;
+    }
+
+    .control-panel {
+      flex: 1;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      background: #fff;
+      min-width: 300px;
+    }
+
+    .upload {
+      border: 1px dashed #bbb;
+      padding: 20px;
+      text-align: center;
+      cursor: pointer;
+    }
+
+    .upload:hover { border-color: #000; }
+    input[type="file"] { display: none; }
+
+    button {
+      padding: 10px;
+      border: 1px solid #000;
+      background: #000;
+      color: #fff;
+      cursor: pointer;
+    }
+
+    button:hover { background: #333; }
+    button:disabled { background: #ccc; border-color: #ccc; cursor: not-allowed; }
+
+    .result { margin-top: auto; font-size: 16px; font-weight: 600; }
+    .confidence { font-size: 13px; color: #666; }
+  </style>
+</head>
+<body>
+
+<header> Klasifikasi Nyamuk </header>
+
+<main>
+  <div class="preview-area" id="previewArea">
+    <span class="placeholder" id="placeholderText">Belum ada gambar</span>
+    <div id="zoomContainer">
+      <div id="zoomContent">
+        <img id="preview" style="display:none;">
+        <canvas id="canvas"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <div class="control-panel">
+    <label class="upload">
+      Upload Gambar
+      <input type="file" id="fileInput" accept="image/*">
+    </label>
+
+    <button id="classifyBtn" onclick="classifyImage()" disabled>Klasifikasi</button>
+    <button id="downloadBtn" onclick="downloadImage()" disabled>Download Hasil</button>
+
+    <div class="result" id="resultText"></div>
+    <div class="confidence" id="confidenceText"></div>
+  </div>
+</main>
+
+<script>
+let hasImage = false;
+let hasResult = false;
+let scale = 1;
+let translateX = 0;
+let translateY = 0;
+let isDragging = false;
+let startX, startY;
+
+const previewArea = document.getElementById("previewArea");
+const zoomContainer = document.getElementById("zoomContainer");
+const zoomContent = document.getElementById("zoomContent");
+const fileInput = document.getElementById('fileInput');
+const preview = document.getElementById('preview');
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const placeholder = document.getElementById('placeholderText');
+const classifyBtn = document.getElementById("classifyBtn");
+const downloadBtn = document.getElementById("downloadBtn");
+
+function updateButtons() {
+  classifyBtn.disabled = !hasImage;
+  downloadBtn.disabled = !hasResult;
+}
+
+function updateTransform() {
+  zoomContent.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scale})`;
+}
+
+fileInput.addEventListener('change', function () {
+  const file = this.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = function (e) {
+    preview.src = e.target.result;
+    preview.style.display = 'block';
+    placeholder.style.display = 'none';
+    
+    preview.onload = () => {
+      const containerW = previewArea.clientWidth;
+      const containerH = previewArea.clientHeight;
+      const imgW = preview.naturalWidth;
+      const imgH = preview.naturalHeight;
+
+      const scaleW = containerW / imgW;
+      const scaleH = containerH / imgH;
+      scale = Math.min(scaleW, scaleH, 1) * 0.9;
+      translateX = (containerW - imgW * scale) / 2;
+      translateY = (containerH - imgH * scale) / 2;
+      
+      canvas.width = imgW;
+      canvas.height = imgH;
+      
+      updateTransform();
+    };
+
+    hasImage = true;
+    hasResult = false;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    document.getElementById('resultText').innerText = "";
+    document.getElementById('confidenceText').innerText = "";
+    updateButtons();
+  };
+  reader.readAsDataURL(file);
+});
+
+zoomContainer.addEventListener("wheel", (e) => {
+  if (!hasImage) return;
+  e.preventDefault();
+
+  const rect = previewArea.getBoundingClientRect();
+  const mouseX = e.clientX - rect.left;
+  const mouseY = e.clientY - rect.top;
+
+  const targetX = (mouseX - translateX) / scale;
+  const targetY = (mouseY - translateY) / scale;
+
+  const zoomSpeed = 0.1;
+  if (e.deltaY < 0) {
+    scale *= (1 + zoomSpeed);
+  } else {
+    scale /= (1 + zoomSpeed);
+  }
+
+  scale = Math.max(0.1, Math.min(scale, 20));
+
+  translateX = mouseX - targetX * scale;
+  translateY = mouseY - targetY * scale;
+
+  updateTransform();
+}, { passive: false });
+
+zoomContainer.addEventListener("mousedown", (e) => {
+  if (!hasImage) return;
+  isDragging = true;
+  startX = e.clientX - translateX;
+  startY = e.clientY - translateY;
+  zoomContainer.style.cursor = "grabbing";
+});
+
+window.addEventListener("mousemove", (e) => {
+  if (!isDragging) return;
+  translateX = e.clientX - startX;
+  translateY = e.clientY - startY;
+  updateTransform();
+});
+
+window.addEventListener("mouseup", () => {
+  isDragging = false;
+  zoomContainer.style.cursor = "grab";
+});
+
+async function classifyImage() {
+  if (!hasImage) return;
+  const file = fileInput.files[0];
+  const formData = new FormData();
+  formData.append("image", file);
+
+  document.getElementById('resultText').innerText = "Memproses...";
+  
+  try {
+    const response = await fetch("/predict", { method: "POST", body: formData });
+    const data = await response.json();
+    drawDetections(data.detections);
+
+    if (data.detections.length > 0) {
+      const top = data.detections[0];
+      document.getElementById('resultText').innerText = formatClassName(top.class_name);
+      document.getElementById('confidenceText').innerText = `Confidence: ${top.confidence}%`;
+    } else {
+      document.getElementById('resultText').innerText = "Tidak terdeteksi";
+    }
+    hasResult = true;
+    updateButtons();
+  } catch (err) {
+    document.getElementById('resultText').innerText = "Gagal menghubungi server";
+  }
+}
+
+function drawDetections(detections) {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(preview, 0, 0, canvas.width, canvas.height);
+
+  detections.forEach(det => {
+    const [x1, y1, x2, y2] = det.box;
+    const baseUnit = canvas.width / 100; 
+    const strokeWidth = Math.max(2, baseUnit * 0.5);
+    const fontSize = Math.max(12, baseUnit * 3);
+
+    ctx.strokeStyle = "#ff0000";
+    ctx.lineWidth = strokeWidth;
+    ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+
+    const text = `${det.class_name} ${det.confidence}%`;
+    ctx.font = `bold ${fontSize}px Arial`;
+    const textWidth = ctx.measureText(text).width;
+    
+    ctx.fillStyle = "rgba(255, 0, 0, 0.85)";
+    ctx.fillRect(x1 - (strokeWidth/2), y1 - fontSize - (baseUnit), textWidth + (baseUnit * 2), fontSize + baseUnit);
+
+    ctx.fillStyle = "white";
+    ctx.fillText(text, x1 + (baseUnit/2), y1 - (baseUnit/1.5));
+  });
+}
+
+function downloadImage() {
+  if (!hasResult) return;
+  const link = document.createElement("a");
+  link.download = `hasil_${Date.now()}.png`;
+  link.href = canvas.toDataURL("image/png");
+  link.click();
+}
+
+function formatClassName(name) {
+  return name.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+}
+</script>
+</body>
+</html>
