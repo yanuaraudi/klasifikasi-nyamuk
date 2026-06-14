@@ -1,0 +1,376 @@
+* { 
+  box-sizing: border-box; 
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, sans-serif;
+  background: #f7f7f7;
+  color: #111;
+  overflow: hidden; 
+}
+
+main {
+  display: flex;
+  height: calc(100vh - 60px);
+}
+
+.preview-area {
+  flex: 2;
+  position: relative;
+  background: #fafafa;
+  overflow: hidden;
+  border-right: 1px solid #ddd;
+}
+
+#zoomContainer {
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+  display: block;
+}
+
+#zoomContent {
+  transform-origin: 0 0;
+  will-change: transform;
+  position: absolute;
+}
+
+#preview {
+  display: block;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+canvas {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+}
+
+header {
+  position: relative;
+  height: 60px;
+  border-bottom: 1px solid #ddd;
+  background: #fff;
+  display: flex;
+  align-items: center;
+  padding: 0 24px;
+}
+
+.header-container {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  margin: 0 auto;
+}
+
+header h1 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #111;
+  line-height: 1;
+}
+
+#pwaInstallBtn {
+  background: #fff;
+  color: #000;
+  border: 1px solid #000;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 6px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  height: 34px; 
+}
+
+#pwaInstallBtn:hover {
+  background: #000;
+  color: #fff;
+}
+
+
+.placeholder {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: #aaa;
+  font-size: 14px;
+  pointer-events: none;
+}
+
+.control-panel {
+  flex: 1;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  background: #fff;
+  min-width: 300px;
+}
+
+.upload {
+  border: 1px dashed #bbb;
+  padding: 20px;
+  text-align: center;
+  cursor: pointer;
+}
+
+.upload:hover { 
+  border-color: #000; 
+}
+
+input[type="file"] { 
+  display: none; 
+}
+
+button {
+  padding: 12px;
+  border: 1px solid #000;
+  background: #000;
+  color: #fff;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+button:hover { 
+  background: #333; 
+}
+
+button:disabled { 
+  background: #ccc; 
+  border-color: #ccc; 
+  cursor: not-allowed; 
+}
+
+.result { 
+  margin-top: auto; 
+  font-size: 16px; 
+  font-weight: 600; 
+}
+
+.confidence { 
+  font-size: 13px; 
+  color: #666; 
+}
+
+/* MODAL STYLE */
+.modal {
+  display: none;
+  position: fixed;
+  z-index: 1000; 
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+}
+
+.modal-content {
+  background: #fff;
+  margin: 6% auto;
+  padding: 32px;
+  width: 90%;
+  max-width: 520px;
+  border-radius: 12px;
+  position: relative;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+  animation: fadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.modal-content h2 {
+  margin-top: 0;
+  font-size: 22px;
+  font-weight: 700;
+  border-bottom: 2px solid #f0f0f0;
+  padding-bottom: 12px;
+  color: #000;
+}
+
+.modal-section {
+  margin-bottom: 20px;
+}
+
+.modal-section h3 {
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #666;
+  margin-bottom: 8px;
+}
+
+.modal-section p, .modal-section li {
+  font-size: 14px;
+  line-height: 1.6;
+  color: #333;
+}
+
+.modal-section ol {
+  padding-left: 20px;
+  margin: 0;
+}
+
+.modal-section li {
+  margin-bottom: 6px;
+}
+
+.close-btn {
+  position: absolute;
+  right: 24px;
+  top: 24px;
+  font-size: 28px;
+  font-weight: 300;
+  color: #aaa;
+  cursor: pointer;
+  line-height: 1;
+  transition: color 0.2s;
+}
+
+.close-btn:hover {
+  color: #000;
+}
+
+.modal-action-btn {
+  width: 100%;
+  padding: 14px;
+  background: #000;
+  color: #fff;
+  border: none;
+  font-weight: 600;
+  font-size: 15px;
+  border-radius: 6px;
+  cursor: pointer;
+  margin-top: 8px;
+  transition: background 0.2s;
+}
+
+.modal-action-btn:hover {
+  background: #222;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+
+@media (max-width: 768px) {
+  body {
+    overflow: auto;
+  }
+
+  main {
+    flex-direction: column;
+    height: auto;
+    min-height: calc(100vh - 60px);
+  }
+
+  .preview-area {
+    width: 100%;
+    height: 45vh;
+    min-height: 300px;
+    border-right: none;
+    border-bottom: 1px solid #ddd;
+    position: relative;
+  }
+
+  .control-panel {
+    width: 100%;
+    min-width: unset;
+    padding: 20px;
+    gap: 16px;
+    background: #fff;
+    flex: unset;
+  }
+
+  .result {
+    margin-top: 20px;
+  }
+
+  .modal {
+    align-items: flex-end;
+    display: none; 
+  }
+  
+  .modal[style*="display: block"] {
+    display: flex !important;
+  }
+
+  .modal-content {
+    margin: 0;
+    width: 100%;
+    max-width: 100%;
+    border-radius: 20px 20px 0 0; 
+    padding: 24px 20px;
+    max-height: 85vh;
+    overflow-y: auto;
+    animation: slideUp 0.35s cubic-bezier(0.15, 1, 0.3, 1);
+    box-shadow: 0 -10px 25px rgba(0,0,0,0.15);
+  }
+
+  .close-btn {
+    right: 20px;
+    top: 20px;
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (max-width: 768px) {
+  body {
+    overflow: auto;
+  }
+
+  main {
+    flex-direction: column;
+    height: auto;
+    min-height: calc(100vh - 60px);
+  }
+
+  .preview-area {
+    width: 100%;
+    height: 45vh;
+    min-height: 300px;
+    border-right: none;
+    border-bottom: 1px solid #ddd;
+    position: relative;
+  }
+
+  .control-panel {
+    width: 100%;
+    min-width: unset;
+    padding: 20px;
+    gap: 16px;
+    background: #fff;
+    flex: unset;
+  }
+
+  .result {
+    margin-top: 20px;
+  }
+  
+  .modal-content {
+    margin: 5% auto;
+    width: 95%;
+    padding: 16px;
+  }
+}

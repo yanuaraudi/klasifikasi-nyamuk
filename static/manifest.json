@@ -1,0 +1,16 @@
+{
+  "name": "Sistem Klasifikasi Spesies Nyamuk",
+  "short_name": "Klasifikasi Nyamuk",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f7f7f7",
+  "theme_color": "#000000",
+  "description": "Klasifikasi Spesies Nyamuk Menggunakan Model YOLO11 Berbasis ResNet18.",
+  "icons": [
+    {
+      "src": "/static/icon.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

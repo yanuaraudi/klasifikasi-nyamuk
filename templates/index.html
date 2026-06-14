@@ -5,110 +5,25 @@
   <title>Klasifikasi Nyamuk</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-  <style>
-    * { box-sizing: border-box; }
+  <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+  <meta name="theme-color" content="#000000">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
-    body {
-      margin: 0;
-      font-family: system-ui, -apple-system, sans-serif;
-      background: #f7f7f7;
-      color: #111;
-    }
-
-    header {
-      padding: 16px 24px;
-      border-bottom: 1px solid #ddd;
-      background: #fff;
-      font-weight: 600;
-    }
-
-    main {
-      display: flex;
-      height: calc(100vh - 60px);
-    }
-
-    .preview-area {
-      flex: 2;
-      position: relative;
-      background: #fafafa;
-      overflow: hidden; /* Memotong konten yang keluar area saat zoom */
-      border-right: 1px solid #ddd;
-    }
-
-    #zoomContainer {
-      width: 100%;
-      height: 100%;
-      cursor: grab;
-      display: block; /* Mengubah ke block untuk kontrol manual koordinat */
-    }
-
-    #zoomContent {
-      transform-origin: 0 0;
-      will-change: transform;
-      position: absolute;
-    }
-
-    #preview {
-      display: block;
-      user-select: none;
-      -webkit-user-drag: none;
-    }
-
-    canvas {
-      position: absolute;
-      left: 0;
-      top: 0;
-      pointer-events: none;
-    }
-
-    .placeholder {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      color: #aaa;
-      font-size: 14px;
-      pointer-events: none;
-    }
-
-    .control-panel {
-      flex: 1;
-      padding: 24px;
-      display: flex;
-      flex-direction: column;
-      gap: 20px;
-      background: #fff;
-      min-width: 300px;
-    }
-
-    .upload {
-      border: 1px dashed #bbb;
-      padding: 20px;
-      text-align: center;
-      cursor: pointer;
-    }
-
-    .upload:hover { border-color: #000; }
-    input[type="file"] { display: none; }
-
-    button {
-      padding: 10px;
-      border: 1px solid #000;
-      background: #000;
-      color: #fff;
-      cursor: pointer;
-    }
-
-    button:hover { background: #333; }
-    button:disabled { background: #ccc; border-color: #ccc; cursor: not-allowed; }
-
-    .result { margin-top: auto; font-size: 16px; font-weight: 600; }
-    .confidence { font-size: 13px; color: #666; }
-  </style>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
 
-<header> Klasifikasi Nyamuk </header>
+<header>
+  <div class="header-container">
+    <h1>Klasifikasi Nyamuk</h1>
+    
+    <button id="pwaInstallBtn" style="display: none;">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px; display: inline-block;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+      Install
+    </button>
+  </div>
+</header>
 
 <main>
   <div class="preview-area" id="previewArea">
@@ -123,195 +38,50 @@
 
   <div class="control-panel">
     <label class="upload">
-      Upload Gambar
+      Unggah Gambar
       <input type="file" id="fileInput" accept="image/*">
     </label>
 
-    <button id="classifyBtn" onclick="classifyImage()" disabled>Klasifikasi</button>
-    <button id="downloadBtn" onclick="downloadImage()" disabled>Download Hasil</button>
+    <button id="classifyBtn" onclick="classifyImage()" disabled>Mulai Klasifikasi</button>
+    <button id="downloadBtn" onclick="downloadImage()" disabled> Unduh Hasil</button>
 
-    <div class="result" id="resultText"></div>
-    <div class="confidence" id="confidenceText"></div>
+    <div id="resultsContainer"></div>
   </div>
 </main>
 
-<script>
-let hasImage = false;
-let hasResult = false;
-let scale = 1;
-let translateX = 0;
-let translateY = 0;
-let isDragging = false;
-let startX, startY;
+<div id="infoModal" class="modal">
+  <div class="modal-content">
+    <span class="close-btn" onclick="closeModal()">&times;</span>
 
-const previewArea = document.getElementById("previewArea");
-const zoomContainer = document.getElementById("zoomContainer");
-const zoomContent = document.getElementById("zoomContent");
-const fileInput = document.getElementById('fileInput');
-const preview = document.getElementById('preview');
-const canvas = document.getElementById('canvas');
-const ctx = canvas.getContext('2d');
-const placeholder = document.getElementById('placeholderText');
-const classifyBtn = document.getElementById("classifyBtn");
-const downloadBtn = document.getElementById("downloadBtn");
+    <h2>Klasifikasi Gambar Nyamuk</h2>
 
-function updateButtons() {
-  classifyBtn.disabled = !hasImage;
-  downloadBtn.disabled = !hasResult;
-}
+    <div class="modal-section">
+      <h3>Informasi Skripsi</h3>
+      <p><strong>Judul:</strong> Klasifikasi Spesies Nyamuk Pada Citra Nyamuk menggunakan Model You Only Look Once 11 Berbasis ResNet18</p>
+      <p><strong>Nama:</strong> Yanuar Audi Nugraha</p>
+      <p><strong>NIM:</strong> 221402137</p>
+      <p><strong>Universitas:</strong> Universitas Sumatera Utara</p>
+      <p><strong>Tahun:</strong> 2026</p>
+      <p>
+        Sistem ini merupakan implementasi model deep learning hybrid YOLO11 sebagai head dan ResNet18 sebagai backbone untuk
+        mengklasifikasikan jenis nyamuk berdasarkan citra.
+      </p>
+    </div>
 
-function updateTransform() {
-  zoomContent.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scale})`;
-}
+    <div class="modal-section">
+      <h3>Cara Penggunaan</h3>
+      <ol>
+        <li>Unggah gambar nyamuk melalui tombol <b>Unggah Gambar</b></li>
+        <li>Klik tombol <b>Mulai Klasifikasi</b></li>
+        <li>Lihat hasil deteksi dan confidence score (Nilai Kepercayaan)</li>
+        <li>Unduh hasil jika diperlukan melalui tombol <b>Unduh Hasil</b></li>
+      </ol>
+    </div>
 
-fileInput.addEventListener('change', function () {
-  const file = this.files[0];
-  if (!file) return;
+    <button class="modal-action-btn" onclick="closeModal()">Mulai</button>
+  </div>
+</div>
 
-  const reader = new FileReader();
-  reader.onload = function (e) {
-    preview.src = e.target.result;
-    preview.style.display = 'block';
-    placeholder.style.display = 'none';
-    
-    preview.onload = () => {
-      const containerW = previewArea.clientWidth;
-      const containerH = previewArea.clientHeight;
-      const imgW = preview.naturalWidth;
-      const imgH = preview.naturalHeight;
-
-      const scaleW = containerW / imgW;
-      const scaleH = containerH / imgH;
-      scale = Math.min(scaleW, scaleH, 1) * 0.9;
-      translateX = (containerW - imgW * scale) / 2;
-      translateY = (containerH - imgH * scale) / 2;
-      
-      canvas.width = imgW;
-      canvas.height = imgH;
-      
-      updateTransform();
-    };
-
-    hasImage = true;
-    hasResult = false;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    document.getElementById('resultText').innerText = "";
-    document.getElementById('confidenceText').innerText = "";
-    updateButtons();
-  };
-  reader.readAsDataURL(file);
-});
-
-zoomContainer.addEventListener("wheel", (e) => {
-  if (!hasImage) return;
-  e.preventDefault();
-
-  const rect = previewArea.getBoundingClientRect();
-  const mouseX = e.clientX - rect.left;
-  const mouseY = e.clientY - rect.top;
-
-  const targetX = (mouseX - translateX) / scale;
-  const targetY = (mouseY - translateY) / scale;
-
-  const zoomSpeed = 0.1;
-  if (e.deltaY < 0) {
-    scale *= (1 + zoomSpeed);
-  } else {
-    scale /= (1 + zoomSpeed);
-  }
-
-  scale = Math.max(0.1, Math.min(scale, 20));
-
-  translateX = mouseX - targetX * scale;
-  translateY = mouseY - targetY * scale;
-
-  updateTransform();
-}, { passive: false });
-
-zoomContainer.addEventListener("mousedown", (e) => {
-  if (!hasImage) return;
-  isDragging = true;
-  startX = e.clientX - translateX;
-  startY = e.clientY - translateY;
-  zoomContainer.style.cursor = "grabbing";
-});
-
-window.addEventListener("mousemove", (e) => {
-  if (!isDragging) return;
-  translateX = e.clientX - startX;
-  translateY = e.clientY - startY;
-  updateTransform();
-});
-
-window.addEventListener("mouseup", () => {
-  isDragging = false;
-  zoomContainer.style.cursor = "grab";
-});
-
-async function classifyImage() {
-  if (!hasImage) return;
-  const file = fileInput.files[0];
-  const formData = new FormData();
-  formData.append("image", file);
-
-  document.getElementById('resultText').innerText = "Memproses...";
-  
-  try {
-    const response = await fetch("/predict", { method: "POST", body: formData });
-    const data = await response.json();
-    drawDetections(data.detections);
-
-    if (data.detections.length > 0) {
-      const top = data.detections[0];
-      document.getElementById('resultText').innerText = formatClassName(top.class_name);
-      document.getElementById('confidenceText').innerText = `Confidence: ${top.confidence}%`;
-    } else {
-      document.getElementById('resultText').innerText = "Tidak terdeteksi";
-    }
-    hasResult = true;
-    updateButtons();
-  } catch (err) {
-    document.getElementById('resultText').innerText = "Gagal menghubungi server";
-  }
-}
-
-function drawDetections(detections) {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.drawImage(preview, 0, 0, canvas.width, canvas.height);
-
-  detections.forEach(det => {
-    const [x1, y1, x2, y2] = det.box;
-    const baseUnit = canvas.width / 100; 
-    const strokeWidth = Math.max(2, baseUnit * 0.5);
-    const fontSize = Math.max(12, baseUnit * 3);
-
-    ctx.strokeStyle = "#ff0000";
-    ctx.lineWidth = strokeWidth;
-    ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
-
-    const text = `${det.class_name} ${det.confidence}%`;
-    ctx.font = `bold ${fontSize}px Arial`;
-    const textWidth = ctx.measureText(text).width;
-    
-    ctx.fillStyle = "rgba(255, 0, 0, 0.85)";
-    ctx.fillRect(x1 - (strokeWidth/2), y1 - fontSize - (baseUnit), textWidth + (baseUnit * 2), fontSize + baseUnit);
-
-    ctx.fillStyle = "white";
-    ctx.fillText(text, x1 + (baseUnit/2), y1 - (baseUnit/1.5));
-  });
-}
-
-function downloadImage() {
-  if (!hasResult) return;
-  const link = document.createElement("a");
-  link.download = `hasil_${Date.now()}.png`;
-  link.href = canvas.toDataURL("image/png");
-  link.click();
-}
-
-function formatClassName(name) {
-  return name.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-}
-</script>
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
 </body>
 </html>

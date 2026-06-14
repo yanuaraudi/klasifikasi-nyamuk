@@ -4,3 +4,6 @@ venv/
 .venv/
 outputs/
 YOLO11-SimAM/
+citra_nyamuk/
+"citra nyamuk/"
+export.ipynb
