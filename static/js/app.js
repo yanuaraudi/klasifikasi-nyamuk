@@ -9,6 +9,7 @@ let translateY = 0;
 let isDragging = false;
 let startX, startY;
 let deferredPrompt;
+let optimizedBlob = null; // Store compressed binary data safely outside URL scopes
 
 // ==========================================================================
 // 2. DOM ELEMENT BINDINGS
@@ -49,80 +50,110 @@ function formatClassName(name) {
 }
 
 // ==========================================================================
-// 4. IMAGE HANDLING & SOURCE SELECTION PIPELINE
+// 4. IMAGE HANDLING & SOURCE SELECTION PIPELINE (With Fixed Canvas Stream)
 // ==========================================================================
 function handleImageFile(file) {
     if (!file) return;
 
     const reader = new FileReader();
     reader.onload = function (e) {
-        preview.src = e.target.result;
-        preview.style.display = 'block';
-        placeholder.style.display = 'none';
+        const compressionImg = new Image();
         
-        preview.onload = () => {
-            handleResize();
-        };
+        compressionImg.onload = function() {
+            const maxDimension = 1280;
+            let width = compressionImg.width;
+            let height = compressionImg.height;
 
-        hasImage = true;
-        hasResult = false;
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        document.getElementById('resultsContainer').innerHTML = ""; 
-        updateButtons();
+            if (width > maxDimension || height > maxDimension) {
+                if (width > height) {
+                    height *= maxDimension / width;
+                    width = maxDimension;
+                } else {
+                    width *= maxDimension / height;
+                    height = maxDimension;
+                }
+            }
+
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = width;
+            tempCanvas.height = height;
+            const tempCtx = tempCanvas.getContext('2d');
+            tempCtx.drawImage(compressionImg, 0, 0, width, height);
+
+            // Export directly to a reliable standalone binary blob for Flask API
+            tempCanvas.toBlob((blob) => {
+                optimizedBlob = blob;
+                
+                // FIXED: Bind event listeners PRIOR to setting preview.src tracking
+                preview.onload = () => {
+                    preview.style.display = 'block';
+                    placeholder.style.display = 'none';
+                    setTimeout(handleResize, 50);
+                };
+                
+                preview.src = tempCanvas.toDataURL('image/jpeg', 0.85);
+
+                hasImage = true;
+                hasResult = false;
+                
+                if (canvas && canvas.width) {
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                }
+                document.getElementById('resultsContainer').innerHTML = ""; 
+                updateButtons();
+            }, 'image/jpeg', 0.85);
+        };
+        compressionImg.src = e.target.result;
     };
     reader.readAsDataURL(file);
 }
 
-// Listen for inputs from both slots
-fileInput.addEventListener('change', function () {
-    handleImageFile(this.files[0]);
-});
+function handleResize() {
+    if (!hasImage || !preview.naturalWidth) return;
 
-if (cameraInput) {
-    cameraInput.addEventListener('change', function () {
-        handleImageFile(this.files[0]);
-    });
+    const containerW = previewArea.getBoundingClientRect().width;
+    const containerH = previewArea.getBoundingClientRect().height;
+    
+    const imgW = preview.naturalWidth;
+    const imgH = preview.naturalHeight;
+
+    const scaleW = containerW / imgW;
+    const scaleH = containerH / imgH;
+    
+    scale = Math.min(scaleW, scaleH);
+    if (scale > 1) scale = 1; 
+    scale *= 0.95;
+
+    translateX = (containerW - (imgW * scale)) / 2;
+    translateY = (containerH - (imgH * scale)) / 2;
+    
+    canvas.width = imgW;
+    canvas.height = imgH;
+    
+    updateTransform();
 }
 
-// Action Sheet Open/Close UI Event Wiring
+// Native event input triggers
+fileInput.addEventListener('change', function () { handleImageFile(this.files[0]); });
+if (cameraInput) { cameraInput.addEventListener('change', function () { handleImageFile(this.files[0]); }); }
+
+// Smart Responsive Trigger: Immediate upload for desktop, Action Sheet for mobile
 if (mediaSelectorBtn) {
     mediaSelectorBtn.addEventListener('click', () => {
-        // Simple, robust mobile device detection check
         const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || (window.innerWidth <= 768);
-        
         if (isMobile) {
-            // Mobile user: Slide up the custom camera/gallery selection sheet
             actionSheet.style.display = 'flex';
         } else {
-            // Desktop user: Bypass the menu and open the file explorer instantly
             fileInput.click();
         }
     });
 }
 
-function closeSheet() {
-    actionSheet.style.display = 'none';
-}
-
+function closeSheet() { actionSheet.style.display = 'none'; }
 if (closeActionSheetBtn) closeActionSheetBtn.addEventListener('click', closeSheet);
-actionSheet.addEventListener('click', (e) => {
-    if (e.target === actionSheet) closeSheet();
-});
-
-// Trigger the hidden native inputs from our stylized sheet buttons
-if (chooseGalleryBtn) {
-    chooseGalleryBtn.addEventListener('click', () => {
-        fileInput.click();
-        closeSheet();
-    });
-}
-
-if (chooseCameraBtn) {
-    chooseCameraBtn.addEventListener('click', () => {
-        cameraInput.click();
-        closeSheet();
-    });
-}
+actionSheet.addEventListener('click', (e) => { if (e.target === actionSheet) closeSheet(); });
+if (chooseGalleryBtn) chooseGalleryBtn.addEventListener('click', () => { fileInput.click(); closeSheet(); });
+if (chooseCameraBtn) chooseCameraBtn.addEventListener('click', () => { cameraInput.click(); closeSheet(); });
 
 window.addEventListener('resize', handleResize);
 
@@ -148,7 +179,6 @@ zoomContainer.addEventListener("wheel", (e) => {
     }
 
     scale = Math.max(0.1, Math.min(scale, 20));
-
     translateX = mouseX - targetX * scale;
     translateY = mouseY - targetY * scale;
 
@@ -179,16 +209,19 @@ window.addEventListener("mouseup", () => {
 // 6. ML INFERENCE GATEWAY & INTERFACE DRAWING
 // ==========================================================================
 async function classifyImage() {
-    if (!hasImage) return;
-    const file = fileInput.files[0];
-    const formData = new FormData();
-    formData.append("image", file);
-
+    if (!hasImage || !optimizedBlob) return;
+    
     const container = document.getElementById('resultsContainer');
     container.innerHTML = "<div class='result'>Memproses...</div>";
     
     try {
+        const formData = new FormData();
+        // FIXED: Stream the pre-computed clean binary blob payload straight to Python
+        formData.append("image", optimizedBlob, "upload.jpg");
+
         const response = await fetch("/predict", { method: "POST", body: formData });
+        
+        if (!response.ok) throw new Error("Server returned an error response flag");
         const data = await response.json();
         
         drawDetections(data.detections);
@@ -214,6 +247,7 @@ async function classifyImage() {
         hasResult = true;
         updateButtons();
     } catch (err) {
+        console.error("[API ERROR]", err);
         container.innerHTML = "<div class='result' style='color: red;'>Gagal menghubungi server</div>";
     }
 }
@@ -253,11 +287,7 @@ function drawDetections(detections) {
 
         ctx.fillStyle = "white";
         ctx.textBaseline = "top"; 
-        ctx.fillText(
-            text, 
-            x1 - (strokeWidth / 2) + paddingX, 
-            y1 - bannerHeight + paddingY
-        );
+        ctx.fillText(text, x1 - (strokeWidth / 2) + paddingX, y1 - bannerHeight + paddingY);
     });
 }
 
@@ -291,7 +321,7 @@ window.addEventListener("load", () => {
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
         navigator.serviceWorker.register('/sw.js')
-            .then(reg => console.log('PWA Service Worker registered safely from root scope!', reg))
+            .then(reg => console.log('PWA Service Worker registered safely!', reg))
             .catch(err => console.log('Service Worker registration failed: ', err));
     });
 }
