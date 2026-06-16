@@ -25,6 +25,13 @@ const classifyBtn = document.getElementById("classifyBtn");
 const downloadBtn = document.getElementById("downloadBtn");
 const installBtn = document.getElementById('pwaInstallBtn');
 
+const cameraInput = document.getElementById('cameraInput');
+const mediaSelectorBtn = document.getElementById('mediaSelectorBtn');
+const actionSheet = document.getElementById('actionSheet');
+const chooseCameraBtn = document.getElementById('chooseCameraBtn');
+const chooseGalleryBtn = document.getElementById('chooseGalleryBtn');
+const closeActionSheetBtn = document.getElementById('closeActionSheetBtn');
+
 // ==========================================================================
 // 3. CORE UTILITY FUNCTIONS
 // ==========================================================================
@@ -42,7 +49,7 @@ function formatClassName(name) {
 }
 
 // ==========================================================================
-// 4. IMAGE HANDLING & VIEWPORT RESIZING
+// 4. IMAGE HANDLING & SOURCE SELECTION PIPELINE
 // ==========================================================================
 function handleImageFile(file) {
     if (!file) return;
@@ -66,35 +73,56 @@ function handleImageFile(file) {
     reader.readAsDataURL(file);
 }
 
-function handleResize() {
-    if (!hasImage || !preview.naturalWidth) return;
-
-    const containerW = previewArea.getBoundingClientRect().width;
-    const containerH = previewArea.getBoundingClientRect().height;
-    
-    const imgW = preview.naturalWidth;
-    const imgH = preview.naturalHeight;
-
-    const scaleW = containerW / imgW;
-    const scaleH = containerH / imgH;
-    
-    scale = Math.min(scaleW, scaleH);
-    if (scale > 1) scale = 1; 
-    scale *= 0.95;
-
-    translateX = (containerW - (imgW * scale)) / 2;
-    translateY = (containerH - (imgH * scale)) / 2;
-    
-    canvas.width = imgW;
-    canvas.height = imgH;
-    
-    updateTransform();
-}
-
-// Bind native file interface (handles single button smart mobile camera/gallery selection)
+// Listen for inputs from both slots
 fileInput.addEventListener('change', function () {
     handleImageFile(this.files[0]);
 });
+
+if (cameraInput) {
+    cameraInput.addEventListener('change', function () {
+        handleImageFile(this.files[0]);
+    });
+}
+
+// Action Sheet Open/Close UI Event Wiring
+if (mediaSelectorBtn) {
+    mediaSelectorBtn.addEventListener('click', () => {
+        // Simple, robust mobile device detection check
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || (window.innerWidth <= 768);
+        
+        if (isMobile) {
+            // Mobile user: Slide up the custom camera/gallery selection sheet
+            actionSheet.style.display = 'flex';
+        } else {
+            // Desktop user: Bypass the menu and open the file explorer instantly
+            fileInput.click();
+        }
+    });
+}
+
+function closeSheet() {
+    actionSheet.style.display = 'none';
+}
+
+if (closeActionSheetBtn) closeActionSheetBtn.addEventListener('click', closeSheet);
+actionSheet.addEventListener('click', (e) => {
+    if (e.target === actionSheet) closeSheet();
+});
+
+// Trigger the hidden native inputs from our stylized sheet buttons
+if (chooseGalleryBtn) {
+    chooseGalleryBtn.addEventListener('click', () => {
+        fileInput.click();
+        closeSheet();
+    });
+}
+
+if (chooseCameraBtn) {
+    chooseCameraBtn.addEventListener('click', () => {
+        cameraInput.click();
+        closeSheet();
+    });
+}
 
 window.addEventListener('resize', handleResize);
 

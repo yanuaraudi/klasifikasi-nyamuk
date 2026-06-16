@@ -37,16 +37,33 @@
   </div>
 
   <div class="control-panel">
-    <label class="upload">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px; vertical-align: middle;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+    <button id="mediaSelectorBtn" class="upload-trigger-btn" type="button">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px; vertical-align: middle;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
       Unggah / Ambil Gambar
-      <input type="file" id="fileInput" accept="image/*">
-    </label>
+    </button>
+
+    <input type="file" id="fileInput" accept="image/*" style="display: none;">
+    <input type="file" id="cameraInput" accept="image/*" capture="environment" style="display: none;">
 
     <button id="classifyBtn" onclick="classifyImage()" disabled>Mulai Klasifikasi</button>
     <button id="downloadBtn" onclick="downloadImage()" disabled> Unduh Hasil</button>
 
     <div id="resultsContainer"></div>
+  </div>
+
+  <div id="actionSheet" class="action-sheet">
+    <div class="action-sheet-content">
+      <div class="action-sheet-header">Pilih Sumber Gambar</div>
+      <button class="action-sheet-btn" id="chooseCameraBtn">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 12px;"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
+        Ambil Foto Kamera
+      </button>
+      <button class="action-sheet-btn" id="chooseGalleryBtn">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 12px;"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+        Pilih dari Galeri
+      </button>
+      <button class="action-sheet-btn cancel-btn" id="closeActionSheetBtn">Batal</button>
+    </div>
   </div>
 </main>
 
