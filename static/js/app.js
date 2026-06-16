@@ -1,15 +1,15 @@
 // ==========================================================================
 // 1. GLOBAL STATE MANAGEMENT
 // ==========================================================================
-let hasImage = false;
-let hasResult = false;
+let batchFiles = [];       
+let currentActiveIdx = -1; 
+let isProcessingQueue = false;
 let scale = 1;
 let translateX = 0;
 let translateY = 0;
 let isDragging = false;
 let startX, startY;
 let deferredPrompt;
-let optimizedBlob = null; // Store compressed binary data safely outside URL scopes
 
 // ==========================================================================
 // 2. DOM ELEMENT BINDINGS
@@ -24,6 +24,7 @@ const ctx = canvas.getContext('2d');
 const placeholder = document.getElementById('placeholderText');
 const classifyBtn = document.getElementById("classifyBtn");
 const downloadBtn = document.getElementById("downloadBtn");
+// const clearQueueBtn = document.getElementById("clearQueueBtn");
 const installBtn = document.getElementById('pwaInstallBtn');
 
 const cameraInput = document.getElementById('cameraInput');
@@ -32,13 +33,17 @@ const actionSheet = document.getElementById('actionSheet');
 const chooseCameraBtn = document.getElementById('chooseCameraBtn');
 const chooseGalleryBtn = document.getElementById('chooseGalleryBtn');
 const closeActionSheetBtn = document.getElementById('closeActionSheetBtn');
+const batchSection = document.querySelector('.batch-section');
 
 // ==========================================================================
 // 3. CORE UTILITY FUNCTIONS
 // ==========================================================================
 function updateButtons() {
-    classifyBtn.disabled = !hasImage;
-    downloadBtn.disabled = !hasResult;
+    const hasImages = batchFiles.length > 0;
+    const hasActiveResult = currentActiveIdx !== -1 && batchFiles[currentActiveIdx].hasResult;
+    
+    classifyBtn.disabled = !hasImages || isProcessingQueue;
+    downloadBtn.disabled = !hasActiveResult || isProcessingQueue;
 }
 
 function updateTransform() {
@@ -50,66 +55,207 @@ function formatClassName(name) {
 }
 
 // ==========================================================================
-// 4. IMAGE HANDLING & SOURCE SELECTION PIPELINE (With Fixed Canvas Stream)
+// 4. IMAGE HANDLING & SOURCE SELECTION PIPELINE
 // ==========================================================================
-function handleImageFile(file) {
-    if (!file) return;
+function handleIncomingFiles(fileList) {
+    if (!fileList || fileList.length === 0) return;
 
-    const reader = new FileReader();
-    reader.onload = function (e) {
-        const compressionImg = new Image();
-        
-        compressionImg.onload = function() {
-            const maxDimension = 1280;
-            let width = compressionImg.width;
-            let height = compressionImg.height;
+    const validFiles = Array.from(fileList).filter(f => f.type.startsWith('image/'));
+    if (validFiles.length === 0) {
+        alert("Harap masukkan file citra gambar yang valid (.jpg, .png)!");
+        return;
+    }
 
-            if (width > maxDimension || height > maxDimension) {
-                if (width > height) {
-                    height *= maxDimension / width;
-                    width = maxDimension;
-                } else {
-                    width *= maxDimension / height;
-                    height = maxDimension;
+    validFiles.forEach(file => {
+        const reader = new FileReader();
+        reader.onload = function (e) {
+            const compressionImg = new Image();
+            compressionImg.onload = function() {
+                const maxDimension = 1280;
+                let width = compressionImg.width;
+                let height = compressionImg.height;
+
+                if (width > maxDimension || height > maxDimension) {
+                    if (width > height) { height *= maxDimension / width; width = maxDimension; }
+                    else { width *= maxDimension / height; height = maxDimension; }
                 }
-            }
 
-            const tempCanvas = document.createElement('canvas');
-            tempCanvas.width = width;
-            tempCanvas.height = height;
-            const tempCtx = tempCanvas.getContext('2d');
-            tempCtx.drawImage(compressionImg, 0, 0, width, height);
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = width;
+                tempCanvas.height = height;
+                const tempCtx = tempCanvas.getContext('2d');
+                tempCtx.drawImage(compressionImg, 0, 0, width, height);
 
-            // Export directly to a reliable standalone binary blob for Flask API
-            tempCanvas.toBlob((blob) => {
-                optimizedBlob = blob;
-                
-                // FIXED: Bind event listeners PRIOR to setting preview.src tracking
-                preview.onload = () => {
-                    preview.style.display = 'block';
-                    placeholder.style.display = 'none';
-                    setTimeout(handleResize, 50);
-                };
-                
-                preview.src = tempCanvas.toDataURL('image/jpeg', 0.85);
+                tempCanvas.toBlob((blob) => {
+                    const dataUrl = tempCanvas.toDataURL('image/jpeg', 0.85);
+                    
+                    const fileRecord = {
+                        name: file.name,
+                        blob: blob,
+                        src: dataUrl,
+                        status: 'pending',
+                        detections: [],
+                        hasResult: false
+                    };
 
-                hasImage = true;
-                hasResult = false;
-                
-                if (canvas && canvas.width) {
-                    ctx.clearRect(0, 0, canvas.width, canvas.height);
-                }
-                document.getElementById('resultsContainer').innerHTML = ""; 
-                updateButtons();
-            }, 'image/jpeg', 0.85);
+                    batchFiles.push(fileRecord);
+                    renderThumbnails();
+
+                    if (batchFiles.length === 1 || currentActiveIdx === -1) {
+                        switchActiveView(batchFiles.length - 1);
+                    }
+                }, 'image/jpeg', 0.85);
+            };
+            compressionImg.src = e.target.result;
         };
-        compressionImg.src = e.target.result;
-    };
-    reader.readAsDataURL(file);
+        reader.readAsDataURL(file);
+    });
 }
 
+function renderThumbnails() {
+    const container = document.getElementById('thumbnailContainer');
+    document.getElementById('batchCount').innerText = batchFiles.length;
+    container.innerHTML = "";
+
+    if (batchFiles.length > 1) {
+        batchSection.style.display = 'flex';
+    } else {
+        batchSection.style.display = 'none';
+    }
+
+    batchFiles.forEach((record, index) => {
+        const card = document.createElement('div');
+        card.className = `thumb-card ${record.status}`;
+        if (index === currentActiveIdx) card.classList.add('active');
+        
+        let statusLabel = "Antre";
+        if (record.status === 'processing') statusLabel = "Proses...";
+        if (record.status === 'done') statusLabel = "Selesai";
+        if (record.status === 'failed') statusLabel = "Gagal";
+
+        card.innerHTML = `
+            <img src="${record.src}">
+            <button class="thumb-delete-btn" title="Hapus gambar ini">&times;</button>
+            <div class="thumb-status-badge">${statusLabel}</div>
+        `;
+
+        // Click handler to open image in view
+        card.addEventListener('click', (e) => {
+            // Prevent execution if the user was clicking the inner delete cross icon instead
+            if (e.target.classList.contains('thumb-delete-btn')) return;
+            if (!isProcessingQueue) switchActiveView(index);
+        });
+
+        // Bind click handler specifically to the tiny delete icon
+        const delBtn = card.querySelector('.thumb-delete-btn');
+        if (delBtn) {
+            delBtn.addEventListener('click', (e) => {
+                e.stopPropagation(); // Stifles event bubbling down to parent image view switches
+                if (!isProcessingQueue) removeImageFromBatch(index);
+            });
+        }
+
+        container.appendChild(card);
+    });
+    updateButtons();
+}
+
+// NEW: Targeted entry index destruction array splicer
+function removeImageFromBatch(index) {
+    if (index < 0 || index >= batchFiles.length || isProcessingQueue) return;
+
+    // Splice target node out of state array memory stack
+    batchFiles.splice(index, 1);
+
+    // Dynamic Index Matrix Adjustment Logic
+    if (batchFiles.length === 0) {
+        // Queue empty: clear canvas layout screens completely
+        currentActiveIdx = -1;
+        preview.style.display = 'none';
+        preview.src = '';
+        placeholder.style.display = 'block';
+        if (canvas && canvas.width) ctx.clearRect(0, 0, canvas.width, canvas.height);
+        document.getElementById('resultsContainer').innerHTML = "";
+    } else if (index === currentActiveIdx) {
+        // User erased the image they were looking at: shift focus safely to neighboring entry node
+        const newActiveIdx = Math.min(index, batchFiles.length - 1);
+        switchActiveView(newActiveIdx);
+    } else if (index < currentActiveIdx) {
+        // Erased element was behind the current viewpoint pointer: decrement pointer to avoid array out of bounds displacements
+        currentActiveIdx--;
+    }
+
+    renderThumbnails();
+}
+
+function switchActiveView(index) {
+    if (index < 0 || index >= batchFiles.length) return;
+    currentActiveIdx = index;
+    const activeRecord = batchFiles[index];
+
+    preview.onload = () => {
+        preview.style.display = 'block';
+        placeholder.style.display = 'none';
+        handleResize(); 
+        
+        // FIXED: Restore instant classification logs sync when cycling through snapshots
+        if (activeRecord.hasResult) {
+            drawDetections(activeRecord.detections);
+            displayTextResults(activeRecord.detections);
+        } else {
+            if (canvas && canvas.width) ctx.clearRect(0, 0, canvas.width, canvas.height);
+            document.getElementById('resultsContainer').innerHTML = "";
+        }
+        updateButtons();
+    };
+    preview.src = activeRecord.src;
+    renderThumbnails();
+}
+
+// ADDED: Clear All Queue Handler
+function clearAllQueue() {
+    if (isProcessingQueue) return;
+    
+    batchFiles = [];
+    currentActiveIdx = -1;
+    
+    // Reset view ports back to structural state boundaries
+    preview.style.display = 'none';
+    preview.src = '';
+    placeholder.style.display = 'block';
+    
+    if (canvas && canvas.width) ctx.clearRect(0, 0, canvas.width, canvas.height);
+    document.getElementById('resultsContainer').innerHTML = "";
+    
+    fileInput.value = "";
+    if (cameraInput) cameraInput.value = "";
+    
+    renderThumbnails();
+}
+
+// Input Event Triggers
+fileInput.addEventListener('change', function () { handleIncomingFiles(this.files); });
+if (cameraInput) { cameraInput.addEventListener('change', function () { handleIncomingFiles(this.files); }); }
+
+if (mediaSelectorBtn) {
+    mediaSelectorBtn.addEventListener('click', () => {
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || (window.innerWidth <= 768);
+        if (isMobile) {
+            actionSheet.style.display = 'flex';
+        } else {
+            fileInput.click();
+        }
+    });
+}
+
+function closeSheet() { actionSheet.style.display = 'none'; }
+if (closeActionSheetBtn) closeActionSheetBtn.addEventListener('click', closeSheet);
+actionSheet.addEventListener('click', (e) => { if (e.target === actionSheet) closeSheet(); });
+if (chooseGalleryBtn) chooseGalleryBtn.addEventListener('click', () => { fileInput.click(); closeSheet(); });
+if (chooseCameraBtn) chooseCameraBtn.addEventListener('click', () => { cameraInput.click(); closeSheet(); });
+
 function handleResize() {
-    if (!hasImage || !preview.naturalWidth) return;
+    if (currentActiveIdx === -1 || !preview.naturalWidth) return;
 
     const containerW = previewArea.getBoundingClientRect().width;
     const containerH = previewArea.getBoundingClientRect().height;
@@ -131,37 +277,18 @@ function handleResize() {
     canvas.height = imgH;
     
     updateTransform();
+    
+    if (batchFiles[currentActiveIdx] && batchFiles[currentActiveIdx].hasResult) {
+        drawDetections(batchFiles[currentActiveIdx].detections);
+    }
 }
-
-// Native event input triggers
-fileInput.addEventListener('change', function () { handleImageFile(this.files[0]); });
-if (cameraInput) { cameraInput.addEventListener('change', function () { handleImageFile(this.files[0]); }); }
-
-// Smart Responsive Trigger: Immediate upload for desktop, Action Sheet for mobile
-if (mediaSelectorBtn) {
-    mediaSelectorBtn.addEventListener('click', () => {
-        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || (window.innerWidth <= 768);
-        if (isMobile) {
-            actionSheet.style.display = 'flex';
-        } else {
-            fileInput.click();
-        }
-    });
-}
-
-function closeSheet() { actionSheet.style.display = 'none'; }
-if (closeActionSheetBtn) closeActionSheetBtn.addEventListener('click', closeSheet);
-actionSheet.addEventListener('click', (e) => { if (e.target === actionSheet) closeSheet(); });
-if (chooseGalleryBtn) chooseGalleryBtn.addEventListener('click', () => { fileInput.click(); closeSheet(); });
-if (chooseCameraBtn) chooseCameraBtn.addEventListener('click', () => { cameraInput.click(); closeSheet(); });
-
 window.addEventListener('resize', handleResize);
 
 // ==========================================================================
 // 5. INTERACTIVE ZOOM & DRAG ENGINE
 // ==========================================================================
 zoomContainer.addEventListener("wheel", (e) => {
-    if (!hasImage) return;
+    if (currentActiveIdx === -1) return;
     e.preventDefault();
 
     const rect = previewArea.getBoundingClientRect();
@@ -172,11 +299,8 @@ zoomContainer.addEventListener("wheel", (e) => {
     const targetY = (mouseY - translateY) / scale;
 
     const zoomSpeed = 0.1;
-    if (e.deltaY < 0) {
-        scale *= (1 + zoomSpeed);
-    } else {
-        scale /= (1 + zoomSpeed);
-    }
+    if (e.deltaY < 0) { scale *= (1 + zoomSpeed); } 
+    else { scale /= (1 + zoomSpeed); }
 
     scale = Math.max(0.1, Math.min(scale, 20));
     translateX = mouseX - targetX * scale;
@@ -186,7 +310,7 @@ zoomContainer.addEventListener("wheel", (e) => {
 }, { passive: false });
 
 zoomContainer.addEventListener("mousedown", (e) => {
-    if (!hasImage) return;
+    if (currentActiveIdx === -1) return;
     isDragging = true;
     startX = e.clientX - translateX;
     startY = e.clientY - translateY;
@@ -206,53 +330,82 @@ window.addEventListener("mouseup", () => {
 });
 
 // ==========================================================================
-// 6. ML INFERENCE GATEWAY & INTERFACE DRAWING
+// 6. SEQUENTIAL ML BATCH INFERENCE CONTROLLER
 // ==========================================================================
-async function classifyImage() {
-    if (!hasImage || !optimizedBlob) return;
+async function processBatchQueue() {
+    if (batchFiles.length === 0 || isProcessingQueue) return;
     
-    const container = document.getElementById('resultsContainer');
-    container.innerHTML = "<div class='result'>Memproses...</div>";
-    
-    try {
-        const formData = new FormData();
-        // FIXED: Stream the pre-computed clean binary blob payload straight to Python
-        formData.append("image", optimizedBlob, "upload.jpg");
+    isProcessingQueue = true;
+    updateButtons();
 
-        const response = await fetch("/predict", { method: "POST", body: formData });
-        
-        if (!response.ok) throw new Error("Server returned an error response flag");
-        const data = await response.json();
-        
-        drawDetections(data.detections);
-        container.innerHTML = "";
+    const resultsSummaryContainer = document.getElementById('resultsContainer');
 
-        if (data.detections.length > 0) {
-            data.detections.forEach((det, index) => {
-                const resultItem = document.createElement('div');
-                resultItem.style.marginBottom = "12px";
-                resultItem.style.borderBottom = "1px solid #eee";
-                resultItem.style.paddingBottom = "8px";
-                
-                resultItem.innerHTML = `
-                    <div class="result">${index + 1}. ${formatClassName(det.class_name)}</div>
-                    <div class="confidence">Confidence: ${det.confidence}%</div>
-                `;
-                container.appendChild(resultItem);
-            });
-        } else {
-            container.innerHTML = "<div class='result'>Tidak terdeteksi nyamuk</div>";
+    for (let i = 0; i < batchFiles.length; i++) {
+        if (batchFiles[i].status === 'done') continue;
+
+        batchFiles[i].status = 'processing';
+        switchActiveView(i);
+        resultsSummaryContainer.innerHTML = `<div class='result'>Memproses citra ${i + 1}/${batchFiles.length}...</div>`;
+
+        try {
+            const formData = new FormData();
+            formData.append("image", batchFiles[i].blob, "upload.jpg");
+
+            const response = await fetch("/predict", { method: "POST", body: formData });
+            if (!response.ok) throw new Error("Inference execution anomaly detected");
+            
+            const data = await response.json();
+
+            batchFiles[i].detections = data.detections;
+            batchFiles[i].hasResult = true;
+            batchFiles[i].status = 'done';
+
+            if (i === currentActiveIdx) {
+                drawDetections(data.detections);
+                displayTextResults(data.detections);
+            }
+        } catch (err) {
+            console.error(err);
+            batchFiles[i].status = 'failed';
+            if (i === currentActiveIdx) {
+                resultsSummaryContainer.innerHTML = "<div class='result' style='color: red;'>Gagal memproses gambar ini</div>";
+            }
         }
-        
-        hasResult = true;
-        updateButtons();
-    } catch (err) {
-        console.error("[API ERROR]", err);
-        container.innerHTML = "<div class='result' style='color: red;'>Gagal menghubungi server</div>";
+        renderThumbnails();
+    }
+
+    isProcessingQueue = false;
+    // Set view focus back to current element selection text block mapping
+    if (currentActiveIdx !== -1) {
+        displayTextResults(batchFiles[currentActiveIdx].detections);
+    }
+    updateButtons();
+}
+
+function displayTextResults(detections) {
+    const container = document.getElementById('resultsContainer');
+    container.innerHTML = "";
+
+    if (detections.length > 0) {
+        detections.forEach((det, index) => {
+            const resultItem = document.createElement('div');
+            resultItem.style.marginBottom = "12px";
+            resultItem.style.borderBottom = "1px solid #eee";
+            resultItem.style.paddingBottom = "8px";
+            
+            resultItem.innerHTML = `
+                <div class="result">${index + 1}. ${formatClassName(det.class_name)}</div>
+                <div class="confidence">Confidence (Kepercayaan): ${det.confidence}%</div>
+            `;
+            container.appendChild(resultItem);
+        });
+    } else {
+        container.innerHTML = "<div class='result'>Tidak terdeteksi nyamuk</div>";
     }
 }
 
 function drawDetections(detections) {
+    if (currentActiveIdx === -1) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(preview, 0, 0, canvas.width, canvas.height);
 
@@ -278,12 +431,7 @@ function drawDetections(detections) {
         const bannerHeight = fontSize + (paddingY * 2);
 
         ctx.fillStyle = "rgba(255, 0, 0, 0.85)";
-        ctx.fillRect(
-            x1 - (strokeWidth / 2), 
-            y1 - bannerHeight, 
-            textWidth + (paddingX * 2), 
-            bannerHeight
-        );
+        ctx.fillRect(x1 - (strokeWidth / 2), y1 - bannerHeight, textWidth + (paddingX * 2), bannerHeight);
 
         ctx.fillStyle = "white";
         ctx.textBaseline = "top"; 
@@ -292,9 +440,12 @@ function drawDetections(detections) {
 }
 
 function downloadImage() {
-    if (!hasResult) return;
+    if (currentActiveIdx === -1 || !batchFiles[currentActiveIdx].hasResult) return;
+    
+    drawDetections(batchFiles[currentActiveIdx].detections);
+    
     const link = document.createElement("a");
-    link.download = `hasil_${Date.now()}.png`;
+    link.download = `hasil_${batchFiles[currentActiveIdx].name || Date.now()}.png`;
     link.href = canvas.toDataURL("image/png");
     link.click();
 }
@@ -302,56 +453,61 @@ function downloadImage() {
 // ==========================================================================
 // 7. DIALOG MODAL CONTROLLERS
 // ==========================================================================
-function openModal() {
-    document.getElementById("infoModal").style.display = "block";
-}
-
-function closeModal() {
-    document.getElementById("infoModal").style.display = "none";
-    setTimeout(handleResize, 100); 
-}
+function openModal() { document.getElementById("infoModal").style.display = "block"; }
+function closeModal() { document.getElementById("infoModal").style.display = "none"; setTimeout(handleResize, 100); }
 
 // ==========================================================================
-// 8. SERVICE WORKER & APPLICATION CORE SYSTEM BOOT
+// 8. SERVICE WORKER BOOT INITIALIZATION
 // ==========================================================================
-window.addEventListener("load", () => {
-    openModal();
-});
+window.addEventListener("load", () => { openModal(); });
 
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js')
-            .then(reg => console.log('PWA Service Worker registered safely!', reg))
-            .catch(err => console.log('Service Worker registration failed: ', err));
+        navigator.serviceWorker.register('/sw.js').catch(err => console.log('SW failed: ', err));
     });
 }
 
 // ==========================================================================
-// 9. NATIVE PWA BANNER INSTALLATION INTERCEPTORS
+// 9. NATIVE PWA INSTALLATION INTERCEPTORS
 // ==========================================================================
 window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
     deferredPrompt = e;
-    if (installBtn) {
-        installBtn.style.display = 'inline-flex';
-    }
+    if (installBtn) installBtn.style.display = 'inline-flex';
 });
 
 if (installBtn) {
     installBtn.addEventListener('click', async () => {
         if (!deferredPrompt) return;
         deferredPrompt.prompt();
-      
-        const { outcome } = await deferredPrompt.userChoice;
-        console.log(`User response to the install prompt: ${outcome}`);
         deferredPrompt = null;
         installBtn.style.display = 'none';
     });
 }
 
-window.addEventListener('appinstalled', (evt) => {
-    console.log('PWA was successfully installed on the device.');
-    if (installBtn) {
-        installBtn.style.display = 'none';
-    }
+// ==========================================================================
+// 10. DRAG AND DROP DESKTOP LISTENER LOGIC
+// ==========================================================================
+const dropOverlay = document.getElementById('dropOverlay');
+
+['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+    previewArea.addEventListener(eventName, (e) => e.preventDefault(), false);
 });
+
+['dragenter', 'dragover'].forEach(eventName => {
+    previewArea.addEventListener(eventName, () => {
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || (window.innerWidth <= 768);
+        if (!isMobile && dropOverlay) dropOverlay.style.display = 'flex';
+    }, false);
+});
+
+previewArea.addEventListener('dragleave', (e) => {
+    if (e.relatedTarget === null || !previewArea.contains(e.relatedTarget)) {
+        if (dropOverlay) dropOverlay.style.display = 'none';
+    }
+}, false);
+
+previewArea.addEventListener('drop', (e) => {
+    if (dropOverlay) dropOverlay.style.display = 'none';
+    handleIncomingFiles(e.dataTransfer.files);
+}, false);
