@@ -45,7 +45,7 @@ def predict():
     
     print("Forwarding RGB image matrix to Hybrid YOLO11+ResNet18 Model...")
     inference_start = time.time()
-    results = model(image_rgb)
+    results = model(image_rgb, conf=0.45)
     inference_duration = time.time() - inference_start
     print(f"Inference complete in {inference_duration:.4f} seconds.")
     
