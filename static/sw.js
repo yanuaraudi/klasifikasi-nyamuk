@@ -7,7 +7,6 @@ const ASSETS_TO_CACHE = [
   '/static/js/app.js'
 ];
 
-// Installs assets into cache on lifecycle setup
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
@@ -16,7 +15,6 @@ self.addEventListener('install', (event) => {
   );
 });
 
-// Cleans up old cache variants during structural updates
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((cacheNames) => {
@@ -31,9 +29,7 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Intercepts connection hooks to pull UI structure locally
 self.addEventListener('fetch', (event) => {
-  // Ignore API requests to prediction endpoint so it never attempts to read it from cache
   if (event.request.url.includes('/predict')) {
     return;
   }

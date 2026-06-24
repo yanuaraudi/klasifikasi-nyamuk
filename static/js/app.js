@@ -139,18 +139,15 @@ function renderThumbnails() {
             <div class="thumb-status-badge">${statusLabel}</div>
         `;
 
-        // Click handler to open image in view
         card.addEventListener('click', (e) => {
-            // Prevent execution if the user was clicking the inner delete cross icon instead
             if (e.target.classList.contains('thumb-delete-btn')) return;
             if (!isProcessingQueue) switchActiveView(index);
         });
 
-        // Bind click handler specifically to the tiny delete icon
         const delBtn = card.querySelector('.thumb-delete-btn');
         if (delBtn) {
             delBtn.addEventListener('click', (e) => {
-                e.stopPropagation(); // Stifles event bubbling down to parent image view switches
+                e.stopPropagation(); 
                 if (!isProcessingQueue) removeImageFromBatch(index);
             });
         }
@@ -160,16 +157,11 @@ function renderThumbnails() {
     updateButtons();
 }
 
-// NEW: Targeted entry index destruction array splicer
 function removeImageFromBatch(index) {
     if (index < 0 || index >= batchFiles.length || isProcessingQueue) return;
-
-    // Splice target node out of state array memory stack
     batchFiles.splice(index, 1);
 
-    // Dynamic Index Matrix Adjustment Logic
     if (batchFiles.length === 0) {
-        // Queue empty: clear canvas layout screens completely
         currentActiveIdx = -1;
         preview.style.display = 'none';
         preview.src = '';
@@ -177,11 +169,9 @@ function removeImageFromBatch(index) {
         if (canvas && canvas.width) ctx.clearRect(0, 0, canvas.width, canvas.height);
         document.getElementById('resultsContainer').innerHTML = "";
     } else if (index === currentActiveIdx) {
-        // User erased the image they were looking at: shift focus safely to neighboring entry node
         const newActiveIdx = Math.min(index, batchFiles.length - 1);
         switchActiveView(newActiveIdx);
     } else if (index < currentActiveIdx) {
-        // Erased element was behind the current viewpoint pointer: decrement pointer to avoid array out of bounds displacements
         currentActiveIdx--;
     }
 
@@ -198,7 +188,6 @@ function switchActiveView(index) {
         placeholder.style.display = 'none';
         handleResize(); 
         
-        // FIXED: Restore instant classification logs sync when cycling through snapshots
         if (activeRecord.hasResult) {
             drawDetections(activeRecord.detections);
             displayTextResults(activeRecord.detections);
@@ -212,14 +201,13 @@ function switchActiveView(index) {
     renderThumbnails();
 }
 
-// ADDED: Clear All Queue Handler
+
 function clearAllQueue() {
     if (isProcessingQueue) return;
     
     batchFiles = [];
     currentActiveIdx = -1;
     
-    // Reset view ports back to structural state boundaries
     preview.style.display = 'none';
     preview.src = '';
     placeholder.style.display = 'block';
@@ -233,7 +221,6 @@ function clearAllQueue() {
     renderThumbnails();
 }
 
-// Input Event Triggers
 fileInput.addEventListener('change', function () { handleIncomingFiles(this.files); });
 if (cameraInput) { cameraInput.addEventListener('change', function () { handleIncomingFiles(this.files); }); }
 
@@ -375,7 +362,6 @@ async function processBatchQueue() {
     }
 
     isProcessingQueue = false;
-    // Set view focus back to current element selection text block mapping
     if (currentActiveIdx !== -1) {
         displayTextResults(batchFiles[currentActiveIdx].detections);
     }

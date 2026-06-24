@@ -168,7 +168,7 @@ button:disabled {
    DRAG AND DROP INTERACTION VISUALS
    ========================================================================== */
 .drop-overlay {
-  display: none; /* Kept hidden until activated by JS drag events */
+  display: none;
   position: absolute;
   top: 0;
   left: 0;
@@ -179,10 +179,10 @@ button:disabled {
   color: #fff;
   font-size: 18px;
   font-weight: 600;
-  z-index: 10; /* Sits completely on top of placeholder and canvas */
+  z-index: 10;
   align-items: center;
   justify-content: center;
-  pointer-events: none; /* Vital: stops overlay element from breaking mouse leaves */
+  pointer-events: none;
   border: 3px dashed #fff;
   margin: 0;
   box-sizing: border-box;
@@ -213,7 +213,7 @@ button:disabled {
   line-height: 1;
   transition: transform 0.1s ease, background 0.2s;
   box-shadow: 0 1px 3px rgba(0,0,0,0.2);
-  opacity: 0.7; /* Semi-hidden until card interactions */
+  opacity: 0.7;
 }
 
 .thumb-card:hover .thumb-delete-btn {
@@ -230,7 +230,7 @@ button:disabled {
    BATCH MULTI-IMAGE UI COMPONENTS
    ========================================================================== */
 .batch-section {
-  display: none; /* FIXED: Hidden by default; JavaScript turns it on when batch size > 1 */
+  display: none;
   flex-direction: column;
   gap: 8px;
   margin-top: 5px;
@@ -278,7 +278,6 @@ button:disabled {
   transform: scale(1.03);
 }
 
-/* Status overlays for individual items inside our file list grid */
 .thumb-card.processing { border-color: #f39c12; }
 .thumb-card.done { border-color: #2ecc71; }
 
